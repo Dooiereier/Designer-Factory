@@ -1,0 +1,56 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 2
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: -1366777262, guid: c37b925f2b4978342b2e0b83a8fa404a, type: 3}
+  m_Name: ModData
+  m_EditorClassIdentifier: 
+  _assemblies:
+  - 0Harmony.dll
+  - Designer Factory.dll
+  _author: Dooiereier
+  _description: Replaces the vehicle designer's flat solid-color background with
+    a 3D hangar/factory interior backdrop.
+  _loadPriority: 0
+  _name: Designer Factory
+  _otherAssets: []
+  _prefabs:
+  - {fileID: 100100000, guid: 7fd2d3fc8293e423691e6c73d9bec60a, type: 3}
+  - {fileID: 100100000, guid: 13a158225c1b6428babe5872e4a55766, type: 3}
+  - {fileID: 100100000, guid: d4f0c45a3c2c347a5ad64d64e56beaea, type: 3}
+  - {fileID: 100100000, guid: 9dfffca90b87b4b04b18b27a9ddca9a9, type: 3}
+  - {fileID: 100100000, guid: e69525cf586fd47ffa1a3c38f4bbef32, type: 3}
+  - {fileID: 100100000, guid: 214dbdf8858c44761a685d0e2050e4b5, type: 3}
+  - {fileID: 100100000, guid: 62aa09608f8a445a8b55cc111a571ba6, type: 3}
+  - {fileID: 100100000, guid: a58ab0f8dedcf4539b000e10df2da590, type: 3}
+  - {fileID: 100100000, guid: cf60d3b876f094f21ae90071ba4e4695, type: 3}
+  - {fileID: 100100000, guid: 58292f370cf5c4823a26db9593d10a20, type: 3}
+  - {fileID: 100100000, guid: 0fe76b275f85d425db931bf0ad02a322, type: 3}
+  - {fileID: 100100000, guid: 82ca6de60342244b6bd1bf3126662ad2, type: 3}
+  - {fileID: 100100000, guid: 9416cf2337c6840d39086d515926e081, type: 3}
+  - {fileID: 100100000, guid: 0aaae9cce0a2f4681afcaa25fd860ed7, type: 3}
+  - {fileID: 100100000, guid: 0466c267fcf4c47b0925cfecefca1c94, type: 3}
+  - {fileID: 100100000, guid: 5275b6580a00649edb9d015c9144c7b9, type: 3}
+  - {fileID: 100100000, guid: 37061de02d387434faced0915d2ed6e6, type: 3}
+  - {fileID: 100100000, guid: ece1042a110c54d779ada7906e8b2bff, type: 3}
+  _steamDescription: 
+  _steamLanguage: English
+  _steamPreviewPath: 
+  _steamTags: 
+  _steamTitle: 
+  _steamVisibility: 0
+  _versionMajor: 0
+  _versionMinor: 1
+  _partCategories: []
+  _parts: []
+  _partStyleExtensions: []
+  _partTextureStyles: []
+  _persistentObjects: []
+  _uiResourceDatabases: []

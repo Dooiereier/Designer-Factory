@@ -1,0 +1,134 @@
+using System.Collections.Generic;
+using UnityEngine;
+
+namespace DesignerBackgroundTest
+{
+    // Spawns cars that loop through whatever structures have been flagged "Waypoint
+    // for car path" in the F2 structure editor (see
+    // StructureEditController.GetWaypointPositions) - place a few primitives (or
+    // anything else) around the hangar/yard, tick that box on each one, and cars
+    // drive a loop through them in placement order.
+    //
+    // Two vehicle types (RangeRover / M939Truck) - caller picks the exact mix via
+    // isTruck (see BuildHangar's fixed 2-truck/1-Range-Rover spawn list) rather than
+    // this factory rolling it randomly.
+    //
+    // Mod-bundled prefab loaded through Mod.Instance.ResourceLoader rather than
+    // UnityEngine.Resources - same reasoning as every other imported prop/character
+    // this mod ships (see WanderingDrood.cs) - assets this mod bundles itself use the
+    // mod's own resource loader, not the game's.
+    public static class CarFactory
+    {
+        private const string PrefabPath = "Assets/Models/Props/RangeRover.prefab";
+        private const string SecondPrefabPath = "Assets/Models/Props/M939Truck.prefab";
+
+        // The truck model's own mesh forward axis doesn't line up with Unity's
+        // forward convention the way the Range Rover's does - CarController's
+        // movement code sets the ROOT's rotation to face the direction of travel
+        // directly, so without a correction the truck drives sideways. Rather than
+        // bake a fixed rotation into the root (which the movement code would just
+        // overwrite next frame), this is applied to the MODEL as a child of the
+        // moving root, so the root still faces travel direction correctly while the
+        // mesh underneath it is rotated to compensate. -90 around Y = 90 degrees
+        // counter-clockwise viewed from above (Unity's Y-axis rotation is clockwise
+        // from above for positive angles).
+        private const float TruckModelYawCorrectionDegrees = -90f;
+
+        public static CarController Create(Transform parent, Vector3 startPosition, float floorY, StructureEditController waypointSource, int startWaypointIndex, bool isTruck)
+        {
+            string prefabPath = isTruck ? SecondPrefabPath : PrefabPath;
+            GameObject prefab = Assets.Scripts.Mod.Instance.ResourceLoader.LoadAsset<GameObject>(prefabPath);
+            if (prefab == null)
+            {
+                Debug.LogWarning("[DesignerBackgroundTest] Could not load car prefab at " + prefabPath);
+                return null;
+            }
+
+            GameObject root = new GameObject("Car");
+            root.transform.SetParent(parent, false);
+            root.transform.position = new Vector3(startPosition.x, floorY, startPosition.z);
+
+            GameObject model = Object.Instantiate(prefab, root.transform, false);
+            model.transform.localPosition = Vector3.zero;
+            model.transform.localRotation = isTruck ? Quaternion.Euler(0f, TruckModelYawCorrectionDegrees, 0f) : Quaternion.identity;
+
+            // The model's pivot isn't necessarily at ground level (many downloaded
+            // FBX models are centered on the mesh instead) - measure the actual
+            // mesh bounds and lift the ROOT (not the model child) so its lowest
+            // point touches the floor, rather than assuming the pivot already sits
+            // there. Without this the car was ending up partially underground.
+            Renderer[] renderers = model.GetComponentsInChildren<Renderer>();
+            if (renderers.Length > 0)
+            {
+                Bounds combined = renderers[0].bounds;
+                for (int i = 1; i < renderers.Length; i++)
+                {
+                    combined.Encapsulate(renderers[i].bounds);
+                }
+                float groundOffset = floorY - combined.min.y;
+                root.transform.position += new Vector3(0f, groundOffset, 0f);
+            }
+
+            CarController controller = root.AddComponent<CarController>();
+            controller.Initialize(waypointSource, floorY, startWaypointIndex);
+            return controller;
+        }
+    }
+
+    // Deliberately simple, code-only follower (same style as WanderingDrood) rather
+    // than a physics-driven vehicle - reads the CURRENT waypoint list fresh every
+    // frame from StructureEditController instead of caching a snapshot at spawn
+    // time, so adding/moving/removing waypoints via F2 takes effect on the car's
+    // next lap without needing to respawn it.
+    public class CarController : MonoBehaviour
+    {
+        public float Speed = 9f;
+        public float TurnSpeed = 90f;
+        public float ArriveDistance = 1.5f;
+
+        private StructureEditController _waypointSource;
+        private float _floorY;
+        private int _waypointIndex;
+
+        public void Initialize(StructureEditController waypointSource, float floorY, int startWaypointIndex)
+        {
+            _waypointSource = waypointSource;
+            _floorY = floorY;
+            _waypointIndex = startWaypointIndex;
+        }
+
+        void Update()
+        {
+            if (_waypointSource == null)
+            {
+                return;
+            }
+
+            List<Vector3> waypoints = _waypointSource.GetWaypointPositions();
+            if (waypoints.Count == 0)
+            {
+                return;
+            }
+            if (_waypointIndex >= waypoints.Count)
+            {
+                _waypointIndex = 0;
+            }
+
+            Vector3 target = waypoints[_waypointIndex];
+            target.y = _floorY;
+            Vector3 toTarget = target - transform.position;
+            toTarget.y = 0f;
+            float distance = toTarget.magnitude;
+
+            if (distance < ArriveDistance)
+            {
+                _waypointIndex = (_waypointIndex + 1) % waypoints.Count;
+                return;
+            }
+
+            Vector3 direction = toTarget / distance;
+            transform.position += direction * (Speed * Time.deltaTime);
+            transform.rotation = Quaternion.RotateTowards(transform.rotation, Quaternion.LookRotation(direction), TurnSpeed * Time.deltaTime);
+        }
+    }
+}

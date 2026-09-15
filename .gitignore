@@ -1,0 +1,33 @@
+# Unity generated
+Library/
+Temp/
+Obj/
+Build/
+Builds/
+Logs/
+UserSettings/
+MemoryCaptures/
+
+# Editor generated project files
+.vs/
+*.csproj
+*.sln
+*.userprefs
+*.pidb
+*.suo
+*.user
+*.unityproj
+ExportedObj/
+
+# OS
+.DS_Store
+
+# Build output - regenerate via Tools > Designer Factory build, not tracked
+ModAssetBundles/
+
+# Jundroo ModTools SDK - installed per-project by Jundroo's own tooling,
+# contains the game's own compiled assemblies (SimpleRockets2.dll, ModApi.dll,
+# ...). Not this repo's code and not ours to redistribute - anyone building
+# this mod needs their own Jundroo ModTools install anyway.
+Assets/ModTools/
+Assets/ModTools.meta

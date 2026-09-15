@@ -1,0 +1,8 @@
+{
+	"name": "Designer Factory",
+	"references": [
+		"UnityEngine.UI",
+		"Unity.TextMeshPro",
+		"Unity.Mathematics"
+	]
+}
