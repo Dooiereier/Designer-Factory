@@ -24,7 +24,19 @@ Designer's flat background with a walkable 3D hangar.
 | `F2` | Toggle the structure editor panel |
 | `F3` | Manually refresh/rebuild the hangar |
 
-While the structure editor panel is open: `G`/`R`/`S` grab/rotate/scale the selected structure.
+While the structure editor panel is open and a structure is selected:
+
+| Key | Action |
+|---|---|
+| `I` / `K` | Move forward / back (world Z) |
+| `J` / `L` | Move left / right (world X) |
+| `U` / `O` | Move up / down (world Y) |
+| `Q` / `E` | Yaw left / right |
+| `R` / `F` | Pitch up / down |
+| `Z` / `C` | Roll left / right |
+| `Shift` (held) | Move/rotate faster |
+
+Scale is set via the X/Y/Z text fields and Apply button in the panel, not a key.
 
 ## Building
 
