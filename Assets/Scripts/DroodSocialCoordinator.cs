@@ -44,12 +44,19 @@ namespace DesignerBackgroundTest
         // on top of each other (most visible in the canteen, where a crowded room
         // plus no Drood-Drood avoidance meant several could converge on the exact
         // same spot).
-        public static List<Vector3> GetOtherPositions(WanderingDrood exclude)
+        // `excludePartner` additionally skips a specific Drood (its own current
+        // conversation partner, when mid-approach to a chat) - ConversationStandoff
+        // (0.3m each from the midpoint, 0.6m apart total) is well inside
+        // WanderingDrood's own DroodAvoidDistance (1.5m by default), so without this
+        // the general personal-space repulsion meant for strangers would hold two
+        // conversation partners at ~1.5m apart forever, never letting them actually
+        // close the last bit of distance to their assigned standing spots.
+        public static List<Vector3> GetOtherPositions(WanderingDrood exclude, WanderingDrood excludePartner = null)
         {
             List<Vector3> positions = new List<Vector3>(_all.Count);
             foreach (WanderingDrood drood in _all)
             {
-                if (drood != null && drood != exclude)
+                if (drood != null && drood != exclude && drood != excludePartner)
                 {
                     positions.Add(drood.transform.position);
                 }

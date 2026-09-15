@@ -11,7 +11,7 @@ namespace DesignerBackgroundTest
         // structure editor (add/move/delete/save/load) becomes fully inaccessible to
         // players, while whatever's already saved in PlacedStructures.json still
         // gets loaded and shown (see StructureEditController.EditingEnabled).
-        private const bool EnableStructureEditor = true;
+        private const bool EnableStructureEditor = false;
 
         // Minimums - the hangar is sized around the actual loaded craft's bounds (see
         // BuildHangar), but never smaller than this, so a tiny craft still gets a
@@ -656,6 +656,18 @@ namespace DesignerBackgroundTest
                         new Vector3(0.5f, catwalkY - levelFloorY, 0.5f),
                         trussColor);
 
+                    // End-cap rail at the FRONT (open, +Z) end of this walkway - the
+                    // long rail above only runs alongside it (protecting the inner/
+                    // outer X edge), and the CornerRail above only closes the BACK
+                    // corner where it meets the back catwalk. Without this, the front
+                    // end of every level's side balcony was just open air - the mezzanine
+                    // only wraps the three enclosed walls, so there's nothing else
+                    // (no wall, no rail) stopping a walk straight off the end.
+                    CreateBox(hangarRoot.transform, $"Catwalk{side}FrontRail{levelSuffix}",
+                        new Vector3(walkwayX, catwalkY + 0.9f, sideZEnd),
+                        new Vector3(catwalkDepth, 0.1f, 0.1f),
+                        trussColor);
+
                     if (walkCamera != null)
                     {
                         float minX = sign < 0f ? wallX + 0.6f : railX - 0.1f;
@@ -670,26 +682,50 @@ namespace DesignerBackgroundTest
                 }
             }
 
-            // Overhead bridge crane: two rails running the depth of the hangar, a bridge
-            // beam spanning between them, and a hook hanging from the bridge centre.
-            float craneRailY = FloorTopY + Height - 5f;
-            float craneRailSpanZ = HalfDepth * 2f - 4f;
-            float craneRailX = Mathf.Min(15f, HalfWidth - 2f);
-            CreateBox(hangarRoot.transform, "CraneRailLeft",
-                new Vector3(-craneRailX, craneRailY, 0f), new Vector3(0.6f, 0.6f, craneRailSpanZ), trussColor);
-            CreateBox(hangarRoot.transform, "CraneRailRight",
-                new Vector3(craneRailX, craneRailY, 0f), new Vector3(0.6f, 0.6f, craneRailSpanZ), trussColor);
-            float craneBridgeY = craneRailY + 0.5f;
-            CreateBox(hangarRoot.transform, "CraneBridge",
-                new Vector3(0f, craneBridgeY, 0f), new Vector3(craneRailX * 2f + 0.6f, 0.6f, 0.6f), trussColor);
+            // Overhead crane hook: the HandCrane prop already models its own cable
+            // rig hanging down from its pivot, so it mounts directly to the middle
+            // roof truss (same trussY/z=0 as the centre Truss_i beam below) rather
+            // than to a separate hand-built gantry. The old placeholder gantry (rail
+            // beams + bridge + a primitive cable box, with the hook hung part-way
+            // down an extra hand-computed cable length below that) has been removed
+            // entirely - it was redundant with the prop's own rig and left the hook
+            // sitting far lower than the truss it should be hanging from.
+            float craneTrussY = FloorTopY + Height - 1.5f;
+            GameObject craneHookPrefab = Assets.Scripts.Mod.Instance.ResourceLoader.LoadAsset<GameObject>("Assets/Models/Props/HandCrane.prefab");
+            if (craneHookPrefab != null)
+            {
+                GameObject craneHook = Object.Instantiate(craneHookPrefab, hangarRoot.transform, false);
+                craneHook.name = "CraneHookBlock";
+                craneHook.transform.localScale = new Vector3(25f, 33f, 33f);
+                craneHook.transform.localPosition = Vector3.zero;
 
-            float cableLength = Height * 0.2f;
-            float hookBottomY = craneBridgeY - cableLength;
-            CreateBox(hangarRoot.transform, "CraneHookCable",
-                new Vector3(0f, (craneBridgeY + hookBottomY) * 0.5f, 0f),
-                new Vector3(0.1f, cableLength, 0.1f), trussColor);
-            CreateBox(hangarRoot.transform, "CraneHookBlock",
-                new Vector3(0f, hookBottomY, 0f), new Vector3(1f, 1f, 1f), trussColor);
+                // The model's own rig extends both above AND below its pivot (it's
+                // not just a hook hanging from a top-anchored cable) - positioning
+                // by pivot alone put a large chunk of it poking up through the roof
+                // into the sky. Measuring the actual (post-scale) renderer bounds
+                // and shifting so the TOP sits at the truss instead fixes that
+                // regardless of where the model's own pivot happens to sit.
+                Renderer[] craneRenderers = craneHook.GetComponentsInChildren<Renderer>();
+                if (craneRenderers.Length > 0)
+                {
+                    Bounds craneBounds = craneRenderers[0].bounds;
+                    for (int i = 1; i < craneRenderers.Length; i++)
+                    {
+                        craneBounds.Encapsulate(craneRenderers[i].bounds);
+                    }
+                    craneHook.transform.localPosition = new Vector3(0f, craneTrussY - craneBounds.max.y, 0f);
+                }
+                else
+                {
+                    craneHook.transform.localPosition = new Vector3(0f, craneTrussY, 0f);
+                }
+            }
+            else
+            {
+                Debug.LogWarning("[DesignerBackgroundTest] Could not load HandCrane prefab - falling back to the primitive hook block.");
+                CreateBox(hangarRoot.transform, "CraneHookBlock",
+                    new Vector3(0f, craneTrussY - 5f, 0f), new Vector3(1f, 1f, 1f), trussColor);
+            }
 
             // Roof turbine vents.
             float ventBaseY = FloorTopY + Height + WallThickness + 0.4f;
@@ -740,13 +776,6 @@ namespace DesignerBackgroundTest
             CreateBox(hangarRoot.transform, "Crate3", new Vector3(crateCornerX, FloorTopY + 2.75f, crateCornerZ), new Vector3(1.2f, 1.2f, 1.2f), crateColorB);
             CreateBox(hangarRoot.transform, "Crate4", new Vector3(crateCornerX + 0.2f, FloorTopY + 0.4f, crateCornerZ + 2.3f), new Vector3(2.5f, 0.8f, 1.6f), crateColorA);
 
-            // Propellant tanks in the back-right corner, white with a coloured band.
-            float tankCornerX = HalfWidth - 4f;
-            float tankCornerZ = -HalfDepth + 4f;
-            CreateCylinder(hangarRoot.transform, "PropTank1", new Vector3(tankCornerX, FloorTopY + 2.5f, tankCornerZ), Quaternion.identity, 2f, 5f, new Color(0.85f, 0.86f, 0.87f));
-            CreateCylinder(hangarRoot.transform, "PropTank1Band", new Vector3(tankCornerX, FloorTopY + 2.5f, tankCornerZ), Quaternion.identity, 2.05f, 0.6f, new Color(0.6f, 0.15f, 0.1f));
-            CreateCylinder(hangarRoot.transform, "PropTank2", new Vector3(tankCornerX - 4f, FloorTopY + 2f, tankCornerZ), Quaternion.identity, 1.6f, 4f, new Color(0.85f, 0.86f, 0.87f));
-            CreateCylinder(hangarRoot.transform, "PropTank2Band", new Vector3(tankCornerX - 4f, FloorTopY + 2f, tankCornerZ), Quaternion.identity, 1.65f, 0.5f, new Color(0.15f, 0.3f, 0.55f));
 
             // Staircases up to BOTH the left and right balcony segments (mirrored) at
             // every level, anchored so each flight's top actually lands on that
@@ -1166,10 +1195,19 @@ namespace DesignerBackgroundTest
             // coordinate variables are in scope instead of being recomputed.
             const int droodCount = 10;
             float droodAvoidRadius = markRadius + 2f;
-            float droodBoundsX = Mathf.Max(2f, HalfWidth - 3f);
-            float droodBoundsZMin = -HalfDepth + 3f;
-            float droodBoundsZMax = HalfDepth - 3f;
+            float droodBoundsX = Mathf.Max(2f, HalfWidth - 8f);
+            float droodBoundsZMin = -HalfDepth + 8f;
+            float droodBoundsZMax = HalfDepth - 8f;
             Vector3 droodDoorwayPoint = new Vector3(HalfWidth - 0.5f, FloorTopY, cafeteriaDoorCenterZ);
+            // Mirrors droodDoorwayPoint on the far side of the wall - without this,
+            // a Drood routed straight from droodDoorwayPoint to a canteen target near
+            // the far edge of the room could drift out of the (only 4m-wide) door
+            // gap while still crossing the wall's own thickness, visibly clipping
+            // through the wall right next to the doorway instead of passing through
+            // it. Both points share the door's centre Z, so the short leg between
+            // them - the one that actually crosses the wall - stays dead-centre in
+            // the gap regardless of where the Drood is headed on either side.
+            Vector3 droodDoorwayPointCanteenSide = new Vector3(HalfWidth + 2f, FloorTopY, cafeteriaDoorCenterZ);
             float droodCanteenMinX = cafeteriaX0 + 1.5f;
             float droodCanteenMaxX = cafeteriaX1 - 1.5f;
             float droodCanteenMinZ = cafeteriaZStart + 1.5f;
@@ -1184,13 +1222,18 @@ namespace DesignerBackgroundTest
             // Stairs aren't F2-placed structures (they're part of the hangar shell
             // itself), so they never show up in droodStructureSource's footprint
             // list - Droods were walking straight through them. Same left/right X
-            // and top/base Z the stairs themselves were built from, further up in
-            // this method - one rectangular keep-out per side, covering the whole
-            // flight regardless of level (every level's stairs stack in the exact
-            // same X/Z footprint - see the stair-building loop's own comments).
+            // the stairs themselves were built from, further up in this method -
+            // one rectangular keep-out per side. Only the bottom half of the run
+            // (from the floor-level base up to the halfway point) rather than the
+            // whole flight up to stairTopZ: the upper half is elevated well above
+            // ground level by then, so it doesn't actually intersect where a Drood
+            // walks, and keeping the zone shorter leaves more room to route around
+            // it near the base - the tight corner it used to get squeezed into
+            // (see the propellant tanks removed above, right next to this zone).
             List<Bounds> droodExtraAvoidZones = new List<Bounds>();
-            float stairZoneMinZ = Mathf.Min(stairTopZ, stairBaseZ);
-            float stairZoneMaxZ = Mathf.Max(stairTopZ, stairBaseZ);
+            float stairZoneHalfwayZ = (stairTopZ + stairBaseZ) * 0.5f;
+            float stairZoneMinZ = Mathf.Min(stairZoneHalfwayZ, stairBaseZ);
+            float stairZoneMaxZ = Mathf.Max(stairZoneHalfwayZ, stairBaseZ);
             foreach (float stairX in new[] { leftStairWalkwayX, rightStairWalkwayX })
             {
                 Bounds stairZone = new Bounds();
@@ -1221,11 +1264,17 @@ namespace DesignerBackgroundTest
                 drood.WanderMinX = -droodBoundsX;
                 drood.WanderMaxX = droodBoundsX;
                 drood.WanderMinZ = droodBoundsZMin;
-                drood.WanderMaxZ = droodBoundsZMax;
+                // +20 only on this (max Z) side - the hangar's open +Z "door" side
+                // (see BuildHangar's wall layout, there's no wall there) - so wander
+                // targets can legitimately land up to 20m out front. Every other
+                // side (back wall at WanderMinZ, left/right at WanderMinX/MaxX)
+                // stays at the wall-clearance bound, no slack.
+                drood.WanderMaxZ = droodBoundsZMax + 20f;
                 drood.AvoidRadius = droodAvoidRadius;
                 drood.StructureSource = droodStructureSource;
                 drood.ExtraAvoidZones = droodExtraAvoidZones;
                 drood.DoorwayPoint = droodDoorwayPoint;
+                drood.DoorwayPointCanteenSide = droodDoorwayPointCanteenSide;
                 drood.CanteenMinX = droodCanteenMinX;
                 drood.CanteenMaxX = droodCanteenMaxX;
                 drood.CanteenMinZ = droodCanteenMinZ;
@@ -1344,12 +1393,18 @@ namespace DesignerBackgroundTest
                 List<Vector3> carWaypoints = structureEditor.GetWaypointPositions();
                 if (carWaypoints.Count > 0)
                 {
-                    // Fixed mix (2 trucks, 1 Range Rover) rather than a random roll.
-                    bool[] carIsTruck = { true, true, false };
-                    for (int i = 0; i < carIsTruck.Length; i++)
+                    // Fixed mix (was 2x M939Truck + 1x RangeRover; car 1 swapped to
+                    // CargoTruck) rather than a random roll.
+                    CarFactory.VehicleKind[] carTypes =
+                    {
+                        CarFactory.VehicleKind.CargoTruck,
+                        CarFactory.VehicleKind.M939Truck,
+                        CarFactory.VehicleKind.RangeRover,
+                    };
+                    for (int i = 0; i < carTypes.Length; i++)
                     {
                         int startIndex = i % carWaypoints.Count;
-                        CarFactory.Create(hangarRoot.transform, carWaypoints[startIndex], FloorTopY, structureEditor, startIndex, carIsTruck[i]);
+                        CarFactory.Create(hangarRoot.transform, carWaypoints[startIndex], FloorTopY, structureEditor, startIndex, carTypes[i]);
                     }
                 }
             }

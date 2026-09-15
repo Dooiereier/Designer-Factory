@@ -27,6 +27,8 @@ namespace Assets.Scripts
             // AddBuildUserInterfaceXmlAction extension point. See
             // DesignerBackgroundTest.DesignerFactoryUi for the actual XML/click wiring.
             Game.Instance.UserInterface.AddBuildUserInterfaceXmlAction(UserInterfaceIds.Design.DesignerUi, DesignerBackgroundTest.DesignerFactoryUi.OnBuildDesignUi);
+
+            DesignerBackgroundTest.ModUpdater.CheckForUpdate();
         }
     }
 }

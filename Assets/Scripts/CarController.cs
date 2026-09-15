@@ -9,9 +9,8 @@ namespace DesignerBackgroundTest
     // anything else) around the hangar/yard, tick that box on each one, and cars
     // drive a loop through them in placement order.
     //
-    // Two vehicle types (RangeRover / M939Truck) - caller picks the exact mix via
-    // isTruck (see BuildHangar's fixed 2-truck/1-Range-Rover spawn list) rather than
-    // this factory rolling it randomly.
+    // Three vehicle types - caller picks the exact mix via VehicleKind (see
+    // BuildHangar's fixed spawn list) rather than this factory rolling it randomly.
     //
     // Mod-bundled prefab loaded through Mod.Instance.ResourceLoader rather than
     // UnityEngine.Resources - same reasoning as every other imported prop/character
@@ -19,10 +18,18 @@ namespace DesignerBackgroundTest
     // mod's own resource loader, not the game's.
     public static class CarFactory
     {
-        private const string PrefabPath = "Assets/Models/Props/RangeRover.prefab";
-        private const string SecondPrefabPath = "Assets/Models/Props/M939Truck.prefab";
+        public enum VehicleKind
+        {
+            RangeRover,
+            M939Truck,
+            CargoTruck,
+        }
 
-        // The truck model's own mesh forward axis doesn't line up with Unity's
+        private const string RangeRoverPrefabPath = "Assets/Models/Props/RangeRover.prefab";
+        private const string M939TruckPrefabPath = "Assets/Models/Props/M939Truck.prefab";
+        private const string CargoTruckPrefabPath = "Assets/Models/Props/CargoTruck.prefab";
+
+        // The M939 truck model's own mesh forward axis doesn't line up with Unity's
         // forward convention the way the Range Rover's does - CarController's
         // movement code sets the ROOT's rotation to face the direction of travel
         // directly, so without a correction the truck drives sideways. Rather than
@@ -34,9 +41,32 @@ namespace DesignerBackgroundTest
         // from above for positive angles).
         private const float TruckModelYawCorrectionDegrees = -90f;
 
-        public static CarController Create(Transform parent, Vector3 startPosition, float floorY, StructureEditController waypointSource, int startWaypointIndex, bool isTruck)
+        private static string GetPrefabPath(VehicleKind kind)
         {
-            string prefabPath = isTruck ? SecondPrefabPath : PrefabPath;
+            switch (kind)
+            {
+                case VehicleKind.M939Truck: return M939TruckPrefabPath;
+                case VehicleKind.CargoTruck: return CargoTruckPrefabPath;
+                default: return RangeRoverPrefabPath;
+            }
+        }
+
+        // CargoTruck hasn't been checked in-game yet, so it defaults to no
+        // correction (same as the Range Rover) until confirmed one way or the
+        // other - if it drives sideways like the M939 originally did, this is the
+        // first place to add a correction for it.
+        private static Quaternion GetModelYawCorrection(VehicleKind kind)
+        {
+            if (kind == VehicleKind.M939Truck)
+            {
+                return Quaternion.Euler(0f, TruckModelYawCorrectionDegrees, 0f);
+            }
+            return Quaternion.identity;
+        }
+
+        public static CarController Create(Transform parent, Vector3 startPosition, float floorY, StructureEditController waypointSource, int startWaypointIndex, VehicleKind kind)
+        {
+            string prefabPath = GetPrefabPath(kind);
             GameObject prefab = Assets.Scripts.Mod.Instance.ResourceLoader.LoadAsset<GameObject>(prefabPath);
             if (prefab == null)
             {
@@ -50,7 +80,7 @@ namespace DesignerBackgroundTest
 
             GameObject model = Object.Instantiate(prefab, root.transform, false);
             model.transform.localPosition = Vector3.zero;
-            model.transform.localRotation = isTruck ? Quaternion.Euler(0f, TruckModelYawCorrectionDegrees, 0f) : Quaternion.identity;
+            model.transform.localRotation = GetModelYawCorrection(kind);
 
             // The model's pivot isn't necessarily at ground level (many downloaded
             // FBX models are centered on the mesh instead) - measure the actual

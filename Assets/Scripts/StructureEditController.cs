@@ -104,6 +104,14 @@ namespace DesignerBackgroundTest
             public bool IsZAxisAnchored;
             public ZAxisSide ZAxisAnchorSide;
             public float ZAxisAnchorInset;
+            // Whether wandering Droods steer around this structure and avoid
+            // picking a wander target on/near it (see GetDroodAvoidedFootprints).
+            // Defaults on since most placed props (forklifts, crates, ...) should
+            // read as physical obstacles - off is for the rare oversized/decorative
+            // piece (a giant centerpiece, a scaled-up launch pad) where treating the
+            // whole thing as a personal-space zone made every Drood inside it get
+            // shoved toward its nearest edge, sometimes well outside the hangar.
+            public bool AvoidedByDroods = true;
         }
 
         // [Preserve] on these two - and on every field below - stops IL2CPP's
@@ -132,6 +140,7 @@ namespace DesignerBackgroundTest
             [Preserve] public bool IsZAxisAnchored;
             [Preserve] public ZAxisSide ZAxisAnchorSide;
             [Preserve] public float ZAxisAnchorInset;
+            [Preserve] public bool AvoidedByDroods = true;
         }
 
         [Serializable, Preserve]
@@ -162,6 +171,17 @@ namespace DesignerBackgroundTest
         private bool _editing;
         private int _selectedIndex = -1;
         private readonly List<PlacedEntry> _placed = new List<PlacedEntry>();
+
+        // Flat rectangular outline traced on the floor beneath whichever structure
+        // is selected in the list - built once (lazily) and just repositioned/
+        // resized every frame while editing, rather than rebuilt from scratch, so
+        // it can track a structure being actively moved/rotated/scaled by the WASD-
+        // style controls above without allocating every frame.
+        private GameObject _selectionMarker;
+        private Transform _selectionMarkerNorth;
+        private Transform _selectionMarkerSouth;
+        private Transform _selectionMarkerEast;
+        private Transform _selectionMarkerWest;
 
         // IDialog implementation - registering/unregistering this with the game's
         // own UserInterface (Game.Instance.UserInterface.RegisterDialog/
@@ -265,10 +285,12 @@ namespace DesignerBackgroundTest
 
             if (!_editing)
             {
+                UpdateSelectionMarker(null);
                 return;
             }
 
             Transform target = Target;
+            UpdateSelectionMarker(target);
             if (target == null)
             {
                 return;
@@ -320,6 +342,113 @@ namespace DesignerBackgroundTest
             {
                 target.Rotate(Vector3.forward, rollInput * RotateSpeed * speedMultiplier * dt, Space.Self);
             }
+        }
+
+        // Builds the marker the first time it's actually needed rather than in
+        // Awake - most sessions won't even open the F2 panel, let alone select
+        // something, so there's no reason to pay for it up front. No collider on
+        // any of the four bars, same reasoning as every other purely-visual
+        // primitive this mod creates (CreateBox, CreateCylinder, ...) - nothing
+        // should ever be able to click, raycast against, or path around this.
+        private void EnsureSelectionMarker()
+        {
+            if (_selectionMarker != null)
+            {
+                return;
+            }
+
+            const float markerThickness = 0.12f;
+            const float markerHeight = 0.05f;
+            Color markerColor = new Color(0.1f, 0.95f, 1f);
+
+            // Left unparented (not under this.transform, which lives on the camera
+            // and could in principle carry its own rotation/scale) - every bar's
+            // position/scale below is set directly in world space each frame, so
+            // there's no reason to risk inheriting a parent transform at all.
+            _selectionMarker = new GameObject("StructureSelectionMarker");
+
+            _selectionMarkerNorth = CreateMarkerBar("North", markerThickness, markerHeight, markerColor);
+            _selectionMarkerSouth = CreateMarkerBar("South", markerThickness, markerHeight, markerColor);
+            _selectionMarkerEast = CreateMarkerBar("East", markerThickness, markerHeight, markerColor);
+            _selectionMarkerWest = CreateMarkerBar("West", markerThickness, markerHeight, markerColor);
+
+            _selectionMarker.SetActive(false);
+        }
+
+        private Transform CreateMarkerBar(string name, float thickness, float height, Color color)
+        {
+            GameObject bar = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            bar.name = "SelectionMarker" + name;
+            Collider barCollider = bar.GetComponent<Collider>();
+            if (barCollider != null)
+            {
+                UnityEngine.Object.Destroy(barCollider);
+            }
+            bar.transform.SetParent(_selectionMarker.transform, false);
+
+            // Sprites/Default is unlit - the marker reads as a consistent bright
+            // cyan regardless of the hangar's own lighting on whatever's beneath
+            // it, the same reasoning CreateBillboardTreeTexture's material uses.
+            Shader shader = Shader.Find("Sprites/Default") ?? Shader.Find("Standard");
+            Renderer renderer = bar.GetComponent<Renderer>();
+            renderer.material = new Material(shader);
+            renderer.material.color = color;
+
+            return bar.transform;
+        }
+
+        // Repositions/resizes the four bars to frame `target`'s actual measured
+        // world-space footprint (same combined-renderer-bounds technique as
+        // GetPlacedFootprints) every frame it's selected, so the outline tracks a
+        // structure being actively moved/rotated/scaled rather than only updating
+        // on selection change. Pass null to hide it (nothing selected, or the
+        // panel just closed).
+        private void UpdateSelectionMarker(Transform target)
+        {
+            if (target == null)
+            {
+                if (_selectionMarker != null)
+                {
+                    _selectionMarker.SetActive(false);
+                }
+                return;
+            }
+
+            Renderer[] renderers = target.GetComponentsInChildren<Renderer>();
+            if (renderers.Length == 0)
+            {
+                if (_selectionMarker != null)
+                {
+                    _selectionMarker.SetActive(false);
+                }
+                return;
+            }
+
+            EnsureSelectionMarker();
+            _selectionMarker.SetActive(true);
+
+            Bounds bounds = renderers[0].bounds;
+            for (int i = 1; i < renderers.Length; i++)
+            {
+                bounds.Encapsulate(renderers[i].bounds);
+            }
+
+            const float thickness = 0.12f;
+            const float barHeight = 0.05f;
+            float y = bounds.min.y + 0.03f;
+            float centerX = bounds.center.x;
+            float centerZ = bounds.center.z;
+            float width = bounds.size.x;
+            float depth = bounds.size.z;
+
+            _selectionMarkerNorth.position = new Vector3(centerX, y, bounds.max.z);
+            _selectionMarkerNorth.localScale = new Vector3(width + thickness, barHeight, thickness);
+            _selectionMarkerSouth.position = new Vector3(centerX, y, bounds.min.z);
+            _selectionMarkerSouth.localScale = new Vector3(width + thickness, barHeight, thickness);
+            _selectionMarkerEast.position = new Vector3(bounds.max.x, y, centerZ);
+            _selectionMarkerEast.localScale = new Vector3(thickness, barHeight, depth + thickness);
+            _selectionMarkerWest.position = new Vector3(bounds.min.x, y, centerZ);
+            _selectionMarkerWest.localScale = new Vector3(thickness, barHeight, depth + thickness);
         }
 
         private GameObject AddStructure(string path, bool isCustomAsset, Vector3 position, Quaternion rotation, Vector3 scale,
@@ -508,6 +637,7 @@ namespace DesignerBackgroundTest
                         IsZAxisAnchored = entry.IsZAxisAnchored,
                         ZAxisAnchorSide = entry.ZAxisAnchorSide,
                         ZAxisAnchorInset = entry.ZAxisAnchorInset,
+                        AvoidedByDroods = entry.AvoidedByDroods,
                     });
                 }
 
@@ -649,18 +779,18 @@ namespace DesignerBackgroundTest
         // wandering Drood (for continuous obstacle steering, not just target-picking),
         // not just occasionally like before. Structures don't move on their own outside
         // of F2 editing, so a short time-based cache costs nothing in practice.
-        private List<Bounds> _footprintCache;
+        private List<(Bounds Bounds, bool AvoidedByDroods)> _footprintCache;
         private float _footprintCacheTime = -1f;
         private const float FootprintCacheDuration = 1f;
 
-        public List<Bounds> GetPlacedFootprints()
+        private List<(Bounds Bounds, bool AvoidedByDroods)> GetFootprintCache()
         {
             if (_footprintCache != null && Time.time - _footprintCacheTime < FootprintCacheDuration)
             {
                 return _footprintCache;
             }
 
-            List<Bounds> footprints = new List<Bounds>();
+            List<(Bounds, bool)> footprints = new List<(Bounds, bool)>();
             foreach (PlacedEntry entry in _placed)
             {
                 if (entry.Instance == null)
@@ -677,11 +807,41 @@ namespace DesignerBackgroundTest
                 {
                     combined.Encapsulate(renderers[i].bounds);
                 }
-                footprints.Add(combined);
+                footprints.Add((combined, entry.AvoidedByDroods));
             }
             _footprintCache = footprints;
             _footprintCacheTime = Time.time;
             return footprints;
+        }
+
+        public List<Bounds> GetPlacedFootprints()
+        {
+            List<Bounds> result = new List<Bounds>();
+            foreach ((Bounds bounds, bool _) in GetFootprintCache())
+            {
+                result.Add(bounds);
+            }
+            return result;
+        }
+
+        // Same footprints, restricted to structures with "Avoided by Droods"
+        // checked (see PlacedEntry.AvoidedByDroods) - what WanderingDrood should
+        // actually steer around and avoid picking a target on/near. Not every
+        // placed structure belongs in a Drood's personal-space checks: an oversized
+        // or purely decorative one (a scaled-up launch pad, a centerpiece prop)
+        // would otherwise register as a single giant avoid-zone a Drood could find
+        // itself standing inside no matter where it wandered.
+        public List<Bounds> GetDroodAvoidedFootprints()
+        {
+            List<Bounds> result = new List<Bounds>();
+            foreach ((Bounds bounds, bool avoidedByDroods) in GetFootprintCache())
+            {
+                if (avoidedByDroods)
+                {
+                    result.Add(bounds);
+                }
+            }
+            return result;
         }
 
         // Replaces every currently placed structure with whatever is in the save
@@ -750,6 +910,7 @@ namespace DesignerBackgroundTest
                         PlacedEntry placed = _placed[_placed.Count - 1];
                         placed.Tint = entry.Tint;
                         ApplyTint(placed);
+                        placed.AvoidedByDroods = entry.AvoidedByDroods;
                     }
                 }
 
@@ -996,6 +1157,7 @@ namespace DesignerBackgroundTest
                 }
 
                 selectedEntry.IsWaypoint = GUILayout.Toggle(selectedEntry.IsWaypoint, "Waypoint for car path");
+                selectedEntry.AvoidedByDroods = GUILayout.Toggle(selectedEntry.AvoidedByDroods, "Avoided by Droods");
             }
 
             GUILayout.Space(8);

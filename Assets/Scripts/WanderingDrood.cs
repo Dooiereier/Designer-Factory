@@ -44,6 +44,7 @@ namespace DesignerBackgroundTest
             instance.name = "Drood";
             instance.transform.SetParent(parent, false);
             instance.transform.position = new Vector3(groundPosition.x, floorY, groundPosition.z);
+            ReduceShininess(instance);
 
             Animator animator = instance.GetComponentInChildren<Animator>();
             if (animator == null)
@@ -54,6 +55,40 @@ namespace DesignerBackgroundTest
             WanderingDrood wanderer = instance.AddComponent<WanderingDrood>();
             wanderer.Initialize(animator, floorY, playerCamera);
             return wanderer;
+        }
+
+        // The imported characters use a Spec/Gloss PBR workflow (see
+        // AssignDiffuseTextures in DroodSetupEditor.cs) and came through Unity's
+        // auto-generated materials looking wet/plastic under the hangar's lighting -
+        // full specular highlight with no roughness to break it up. Dialed down at
+        // runtime (via .material, which instantiates a per-Drood copy rather than
+        // editing the shared asset) instead of in the FBX import settings, since
+        // that only takes effect on a reimport and wouldn't touch the
+        // DroodPrefab*.prefab files already baked into the repo.
+        private static void ReduceShininess(GameObject instance)
+        {
+            foreach (Renderer renderer in instance.GetComponentsInChildren<Renderer>())
+            {
+                foreach (Material material in renderer.materials)
+                {
+                    if (material.HasProperty("_Glossiness"))
+                    {
+                        material.SetFloat("_Glossiness", 0.1f);
+                    }
+                    if (material.HasProperty("_Smoothness"))
+                    {
+                        material.SetFloat("_Smoothness", 0.1f);
+                    }
+                    if (material.HasProperty("_Metallic"))
+                    {
+                        material.SetFloat("_Metallic", 0f);
+                    }
+                    if (material.HasProperty("_SpecColor"))
+                    {
+                        material.SetColor("_SpecColor", new Color(0.05f, 0.05f, 0.05f));
+                    }
+                }
+            }
         }
     }
 
@@ -99,8 +134,14 @@ namespace DesignerBackgroundTest
         // cached, same reasoning as CarController's waypoint list.
         public StructureEditController StructureSource;
         // Extra margin added around each structure's actual measured footprint (not
-        // a substitute for one - see IsPointBlocked).
-        public float StructureAvoidRadius = 3f;
+        // a substitute for one - see IsPointBlocked). Separate values for the
+        // hangar and the canteen: the canteen is a small room that can get packed
+        // with furniture (couches, tables, plants), and the same margin that's
+        // comfortable in the open hangar can pad every piece enough to overlap and
+        // block out most of the room's own floor, leaving PickCanteenPoint's
+        // retry loop nothing valid to find.
+        public float StructureAvoidRadius = 2f;
+        public float CanteenStructureAvoidRadius = 0.5f;
 
         // Fixed keep-out zones for hangar-built geometry that ISN'T an F2-placed
         // structure and so never shows up in StructureSource's footprint list - the
@@ -113,7 +154,7 @@ namespace DesignerBackgroundTest
         // How far a new wander target must be from every OTHER Drood's CURRENT
         // position - read live from DroodSocialCoordinator's registry each pick, not
         // cached (same reasoning as everything else here).
-        public float DroodAvoidDistance = 2.5f;
+        public float DroodAvoidDistance = 1.5f;
 
         // Cafeteria wander bounds and the chance (per idle-to-walking transition) of
         // heading there instead of somewhere else in the hangar. Left at their
@@ -125,6 +166,11 @@ namespace DesignerBackgroundTest
         public float CanteenMaxZ;
         public float CanteenVisitChance = 0.3f;
         public Vector3 DoorwayPoint;
+        // Mirrors DoorwayPoint on the canteen side of the wall (see BuildHangar) -
+        // the short leg between the two, both at the door's centre Z, is the only
+        // one that actually crosses the wall, keeping it inside the (only 4m-wide)
+        // door gap regardless of where the route starts or ends on either side.
+        public Vector3 DoorwayPointCanteenSide;
         private bool CanteenEnabled => CanteenMaxX > CanteenMinX && CanteenMaxZ > CanteenMinZ;
 
         // Fleeing only ever triggers while the player is actually walking around
@@ -159,6 +205,26 @@ namespace DesignerBackgroundTest
         // Queued rather than a single slot since a route can need both at once.
         private readonly Queue<Vector3> _waypoints = new Queue<Vector3>();
         private float _idleTimer;
+
+        // Last-resort safety net: if Walking goes a full StuckTimeoutSeconds window
+        // without covering at least StuckMinProgressDistance total, the current
+        // route is abandoned. This is the Walking-state equivalent of Talking's
+        // _talkDeadline (below), which solves the same "never actually gets there"
+        // problem for the approach-to-conversation phase. Now that movement blends
+        // in Drood-Drood and structure/stairs avoidance (see SteerAwayFromObstacles)
+        // rather than a plain straight line, a Drood CAN end up in a local
+        // force-balance it never escapes on its own - pinned between two other
+        // Droods, wedged against a structure's corner, or some other geometry this
+        // heuristic-only steering wasn't specifically tuned for - and without this,
+        // that's a permanent freeze rather than a rare, self-correcting one frame.
+        // Checked over an accumulated window rather than a per-frame delta, which
+        // would be framerate-dependent (a single frame's normal movement can be
+        // smaller than any per-frame epsilon worth setting at a high framerate,
+        // false-triggering during completely ordinary walking).
+        private const float StuckTimeoutSeconds = 2f;
+        private const float StuckMinProgressDistance = 0.3f;
+        private float _stuckWindowStartTime;
+        private Vector3 _stuckWindowStartPos;
 
         private Quaternion _talkFacing;
         private WanderingDrood _talkPartner;
@@ -273,6 +339,7 @@ namespace DesignerBackgroundTest
                 // Reached this leg's point - dequeue it. If that was the last one
                 // (the real target), go idle now instead of waiting another frame.
                 _waypoints.Dequeue();
+                ResetStuckWindow();
                 if (_waypoints.Count == 0)
                 {
                     _state = BehaviorState.Idle;
@@ -283,6 +350,26 @@ namespace DesignerBackgroundTest
             }
 
             MoveToward(currentGoal, WalkSpeed);
+
+            if (Time.time - _stuckWindowStartTime >= StuckTimeoutSeconds)
+            {
+                float progressed = Vector3.Distance(_stuckWindowStartPos, transform.position);
+                if (progressed < StuckMinProgressDistance)
+                {
+                    _waypoints.Clear();
+                    _state = BehaviorState.Idle;
+                    SetAnim(IsWalkingHash, false);
+                    _idleTimer = UnityEngine.Random.Range(MinIdleSeconds, MaxIdleSeconds);
+                    return;
+                }
+                ResetStuckWindow();
+            }
+        }
+
+        private void ResetStuckWindow()
+        {
+            _stuckWindowStartTime = Time.time;
+            _stuckWindowStartPos = transform.position;
         }
 
         private void UpdateTalking()
@@ -330,6 +417,13 @@ namespace DesignerBackgroundTest
             }
         }
 
+        // Straight line to the goal, blended with a repulsion push away from other
+        // Droods and structures/stairs (see SteerAwayFromObstacles) so a Drood
+        // visibly steers around them instead of clipping through. Deliberately NOT
+        // doing this for walls/bounds - that was tried and caused a Drood to walk
+        // far outside the hangar via a clamp fighting this steering. Wall/boundary
+        // containment is left entirely to PickHangarPoint/PickCanteenPoint's target
+        // selection instead.
         private void MoveToward(Vector3 goal, float speed)
         {
             Vector3 pos = transform.position;
@@ -346,22 +440,28 @@ namespace DesignerBackgroundTest
             transform.rotation = Quaternion.RotateTowards(transform.rotation, Quaternion.LookRotation(direction), TurnSpeed * Time.deltaTime);
         }
 
-        // Target-picking (PickHangarPoint/PickCanteenPoint) only ever validates the
-        // eventual GOAL point against structures/stairs/other Droods - the straight
-        // line walked to get there was never checked, so a Drood could still clip
-        // straight through whatever happened to sit between two otherwise-valid
-        // points, or through another Drood that wandered into the way after the
-        // target was picked. This blends the straight-line direction toward the
-        // goal with a repulsion push away from anything currently too close, so
-        // movement visibly steers around obstacles instead of clipping through -
-        // not real pathfinding (consistent with the rest of this mod's heuristic-
-        // only approach to movement), just a continuous nudge.
+        // Structure/stairs avoidance previously caused a Drood to walk far outside
+        // the hangar: any placed structure's footprint (props get placed at up to
+        // 40-300x scale) could be large enough that a Drood standing anywhere
+        // inside its expanded avoid-zone got pushed with a magnitude that dominated
+        // the (always unit-length) goal direction, so it just walked straight
+        // toward that huge zone's nearest edge - past the hangar's own walls for a
+        // big enough structure, and toward a DIFFERENT edge for each Drood relative
+        // to that same structure, i.e. "scattered outside in every direction". Now
+        // that GetDroodAvoidedFootprints() lets a structure be excluded via its
+        // "Avoided by Droods" checkbox (StructureEditController), the oversized/
+        // decorative offender can just be opted out instead of every structure
+        // needing this pushed magnitude capped defensively.
         private Vector3 SteerAwayFromObstacles(Vector3 pos, Vector3 towardGoal)
         {
             Vector2 pos2D = new Vector2(pos.x, pos.z);
             Vector2 push = Vector2.zero;
 
-            List<Vector3> otherDroods = DroodSocialCoordinator.GetOtherPositions(this);
+            // Excludes _talkPartner too - see GetOtherPositions - otherwise this
+            // and its assigned conversation partner can never actually reach their
+            // (deliberately close) standing spots, stuck a repulsion-distance apart
+            // instead.
+            List<Vector3> otherDroods = DroodSocialCoordinator.GetOtherPositions(this, _talkPartner);
             foreach (Vector3 other in otherDroods)
             {
                 Vector2 away = pos2D - new Vector2(other.x, other.z);
@@ -374,11 +474,18 @@ namespace DesignerBackgroundTest
 
             if (StructureSource != null)
             {
-                foreach (Bounds footprint in StructureSource.GetPlacedFootprints())
+                // Same "which side of the doorway" classification PickNewTarget
+                // uses - the canteen gets its own, much smaller margin (see
+                // CanteenStructureAvoidRadius) since the same clearance that's
+                // comfortable around a forklift in the open hangar would pad every
+                // piece of furniture enough to make the room feel impassable.
+                bool inCanteen = CanteenEnabled && pos.x > DoorwayPoint.x;
+                float structureAvoidRadius = inCanteen ? CanteenStructureAvoidRadius : StructureAvoidRadius;
+                foreach (Bounds footprint in StructureSource.GetDroodAvoidedFootprints())
                 {
                     push += PushAwayFromRect(pos2D,
-                        footprint.min.x - StructureAvoidRadius, footprint.max.x + StructureAvoidRadius,
-                        footprint.min.z - StructureAvoidRadius, footprint.max.z + StructureAvoidRadius);
+                        footprint.min.x - structureAvoidRadius, footprint.max.x + structureAvoidRadius,
+                        footprint.min.z - structureAvoidRadius, footprint.max.z + structureAvoidRadius);
                 }
             }
 
@@ -407,11 +514,21 @@ namespace DesignerBackgroundTest
             return new Vector3(result.x, 0f, result.y);
         }
 
+        // Capped as a defensive backstop, not the primary fix (that's the "Avoided
+        // by Droods" checkbox) - PickHangarPoint/PickCanteenPoint only validate a
+        // leg's START and END point, never the straight line between them, so a
+        // route can still legitimately cut through the middle of even a
+        // reasonably-sized avoided structure someone forgot to exclude. Since the
+        // goal direction blended in above is always a unit vector, an uncapped push
+        // scaled by "distance to the nearest edge" would otherwise be able to swamp
+        // it completely for as long as the Drood remained inside.
+        private const float MaxObstaclePush = 4f;
+
         // If `pos` (world X/Z, Y-component of the Vector2 holding world Z) is inside
         // the given rectangle, returns a vector pointing out through whichever edge
-        // is nearest, scaled by how far in that direction it'd take to actually
-        // clear it - a shallow graze near an edge gets a soft nudge, while deep
-        // inside a large footprint gets pushed hard. Zero when already outside.
+        // is nearest - a shallow graze near an edge gets a soft nudge, while deep
+        // inside a large footprint gets pushed at the capped strength. Zero when
+        // already outside.
         private static Vector2 PushAwayFromRect(Vector2 pos, float minX, float maxX, float minZ, float maxZ)
         {
             if (pos.x < minX || pos.x > maxX || pos.y < minZ || pos.y > maxZ)
@@ -423,11 +540,12 @@ namespace DesignerBackgroundTest
             float distToMinZ = pos.y - minZ;
             float distToMaxZ = maxZ - pos.y;
             float smallest = Mathf.Min(Mathf.Min(distToMinX, distToMaxX), Mathf.Min(distToMinZ, distToMaxZ));
+            float pushMagnitude = Mathf.Min(smallest, MaxObstaclePush);
 
-            if (smallest == distToMinX) return new Vector2(-1f, 0f) * smallest;
-            if (smallest == distToMaxX) return new Vector2(1f, 0f) * smallest;
-            if (smallest == distToMinZ) return new Vector2(0f, -1f) * smallest;
-            return new Vector2(0f, 1f) * smallest;
+            if (smallest == distToMinX) return new Vector2(-1f, 0f) * pushMagnitude;
+            if (smallest == distToMaxX) return new Vector2(1f, 0f) * pushMagnitude;
+            if (smallest == distToMinZ) return new Vector2(0f, -1f) * pushMagnitude;
+            return new Vector2(0f, 1f) * pushMagnitude;
         }
 
         private void SetAnim(int hash, bool value)
@@ -466,13 +584,22 @@ namespace DesignerBackgroundTest
             Vector3 legStart = transform.position;
             if (startInCanteen != endInCanteen)
             {
-                EnqueueLeg(legStart, DoorwayPoint);
-                legStart = DoorwayPoint;
+                // Cross the wall via both doorway points, hangar-side first if
+                // heading into the canteen or canteen-side first if heading out -
+                // either way the short leg between them is the one that actually
+                // crosses the wall, and it never has anywhere to drift to since
+                // both ends sit on the door's centre Z.
+                Vector3 nearPoint = startInCanteen ? DoorwayPointCanteenSide : DoorwayPoint;
+                Vector3 farPoint = startInCanteen ? DoorwayPoint : DoorwayPointCanteenSide;
+                EnqueueLeg(legStart, nearPoint);
+                _waypoints.Enqueue(farPoint);
+                legStart = farPoint;
             }
             EnqueueLeg(legStart, candidate);
 
             _target = candidate;
             _state = BehaviorState.Walking;
+            ResetStuckWindow();
             SetAnim(IsWalkingHash, true);
         }
 
@@ -523,7 +650,7 @@ namespace DesignerBackgroundTest
         private Vector3 PickHangarPoint()
         {
             System.Collections.Generic.List<Bounds> structureFootprints =
-                StructureSource != null ? StructureSource.GetPlacedFootprints() : null;
+                StructureSource != null ? StructureSource.GetDroodAvoidedFootprints() : null;
             System.Collections.Generic.List<Vector3> otherDroods = DroodSocialCoordinator.GetOtherPositions(this);
 
             Vector3 lastCandidate = new Vector3(AvoidRadius + 1f, FloorY, 0f);
@@ -536,7 +663,7 @@ namespace DesignerBackgroundTest
                 {
                     continue;
                 }
-                if (IsPointBlocked(x, z, structureFootprints, otherDroods))
+                if (IsPointBlocked(x, z, structureFootprints, otherDroods, StructureAvoidRadius))
                 {
                     continue;
                 }
@@ -551,23 +678,28 @@ namespace DesignerBackgroundTest
             return lastCandidate;
         }
 
-        // Real footprint (measured renderer bounds, from StructureAvoidRadius as
+        // Real footprint (measured renderer bounds, from `structureAvoidRadius` as
         // margin around it) rather than a fixed radius around just the pivot - a
         // fixed radius badly under-covered large scaled-up props (couches, plants,
         // forklifts - some placed at 40-300x scale) while over-covering tiny ones,
         // which is why Droods kept wandering straight through/into them. Also checks
         // ExtraAvoidZones (stairs, ...) - hangar-built geometry that never shows up
         // in StructureSource's list since it isn't an F2-placed structure - and other
-        // Droods' current positions, so they stop picking targets on top of each other.
+        // Droods' current positions, so they stop picking targets on top of each
+        // other. Margin is a parameter rather than always reading StructureAvoidRadius
+        // directly - PickHangarPoint and PickCanteenPoint pass their own (see
+        // StructureAvoidRadius/CanteenStructureAvoidRadius) since the same margin
+        // that's comfortable in the open hangar can block out most of the much
+        // smaller, furniture-packed canteen.
         private bool IsPointBlocked(float x, float z, System.Collections.Generic.List<Bounds> structureFootprints,
-            System.Collections.Generic.List<Vector3> otherDroods)
+            System.Collections.Generic.List<Vector3> otherDroods, float structureAvoidRadius)
         {
             if (structureFootprints != null)
             {
                 foreach (Bounds footprint in structureFootprints)
                 {
-                    if (x >= footprint.min.x - StructureAvoidRadius && x <= footprint.max.x + StructureAvoidRadius &&
-                        z >= footprint.min.z - StructureAvoidRadius && z <= footprint.max.z + StructureAvoidRadius)
+                    if (x >= footprint.min.x - structureAvoidRadius && x <= footprint.max.x + structureAvoidRadius &&
+                        z >= footprint.min.z - structureAvoidRadius && z <= footprint.max.z + structureAvoidRadius)
                     {
                         return true;
                     }
@@ -605,7 +737,7 @@ namespace DesignerBackgroundTest
         private Vector3 PickCanteenPoint()
         {
             System.Collections.Generic.List<Bounds> structureFootprints =
-                StructureSource != null ? StructureSource.GetPlacedFootprints() : null;
+                StructureSource != null ? StructureSource.GetDroodAvoidedFootprints() : null;
             System.Collections.Generic.List<Vector3> otherDroods = DroodSocialCoordinator.GetOtherPositions(this);
 
             Vector3 lastCandidate = new Vector3((CanteenMinX + CanteenMaxX) * 0.5f, FloorY, (CanteenMinZ + CanteenMaxZ) * 0.5f);
@@ -614,7 +746,7 @@ namespace DesignerBackgroundTest
                 float x = UnityEngine.Random.Range(CanteenMinX, CanteenMaxX);
                 float z = UnityEngine.Random.Range(CanteenMinZ, CanteenMaxZ);
                 lastCandidate = new Vector3(x, FloorY, z);
-                if (!IsPointBlocked(x, z, structureFootprints, otherDroods))
+                if (!IsPointBlocked(x, z, structureFootprints, otherDroods, CanteenStructureAvoidRadius))
                 {
                     return lastCandidate;
                 }
