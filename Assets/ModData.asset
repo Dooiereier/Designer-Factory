@@ -16,8 +16,11 @@ MonoBehaviour:
   - 0Harmony.dll
   - Designer Factory.dll
   _author: Dooiereier
-  _description: Replaces the designer's flat solid-color background with a 3D hangar/factory
+  _description: 'Replaces the designer''s flat solid-color background with a 3D hangar/factory
     interior backdrop.
+
+
+    <color=red>Requires Juno Harmony'
   _loadPriority: 0
   _name: Designer Factory
   _otherAssets: []
