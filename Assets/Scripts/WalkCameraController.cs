@@ -28,16 +28,25 @@ namespace DesignerBackgroundTest
 
     // Ground-based FPS-style walk camera for exploring the hangar: WASD moves along
     // the horizontal plane at a fixed eye height (using yaw only, so looking up/down
-    // doesn't make you fly), arrow keys control look direction, and a small view-bob
-    // simulates footsteps. Toggle with F1 to hand control back to the Designer's own
-    // orbit/zoom camera.
+    // doesn't make you fly), mouse movement (or arrow keys) controls look direction,
+    // and a small view-bob simulates footsteps. Toggle with F1 to hand control back
+    // to the Designer's own orbit/zoom camera.
     //
-    // Deliberately does not touch the mouse or cursor lock state at all - an earlier
-    // version tried mouse-look (both via Input.GetAxis and via raw mousePosition
-    // deltas) and locked/hid the cursor while walking, but the mouse axis never
-    // produced usable input in this game, and locking the cursor fought with the
-    // Escape menu's own attempt to unlock it. The mouse is left completely alone so
-    // it stays available for normal game interaction while walking.
+    // An earlier version tried mouse-look via Unity's own Input.GetAxis/mousePosition
+    // and never got usable deltas out of either - this game routes input through
+    // Rewired, which was almost certainly intercepting mouse movement before Unity's
+    // Input class ever saw it. Reading Game.Instance.Inputs.CameraLookLeftRight/
+    // CameraLookUpDown (ModApi.Input.IGameInput.GetAxis()) instead goes through the
+    // same sanctioned input pipeline the game's own free-look camera uses, which is
+    // why it actually works where the raw Input class didn't.
+    //
+    // Cursor lock/visibility has no sanctioned ModApi equivalent - still raw
+    // UnityEngine.Cursor, same call that fought the Escape menu's own cursor
+    // handling before. Rather than trying to out-execution-order whatever the pause
+    // menu does with the cursor each frame (fragile, and the "which one wins" fight
+    // could go either way depending on timing), Escape while walking exits walk mode
+    // first (see LateUpdate) - walk mode's cursor lock and the pause menu's cursor
+    // handling are then never both trying to drive the cursor at the same time.
     //
     // Runs its LateUpdate after every default-order script (DefaultExecutionOrder set
     // far past 0) so it always gets the final say on the camera's transform for the
@@ -51,6 +60,14 @@ namespace DesignerBackgroundTest
         public float EyeHeight = 1.8f;
         public float WalkSpeed = 8f;
         public float ArrowLookSpeed = 90f; // degrees per second
+
+        // IGameInput.GetAxis() for a mouse-bound axis already returns a per-frame
+        // delta (not a rate), same convention as Unity's own Input.GetAxis("Mouse
+        // X") - so this multiplies the raw axis directly, with no Time.deltaTime
+        // involved, unlike ArrowLookSpeed above. Untested against real mouse
+        // hardware in this game before, so treat this value as a starting point to
+        // tune, not a known-correct constant.
+        public float MouseLookSensitivity = 180f;
 
         // Walkable surfaces above the base floor (catwalk sections, stair steps) -
         // repopulated by BuildHangar every time the hangar is rebuilt. Standing over
@@ -157,6 +174,16 @@ namespace DesignerBackgroundTest
                 }
             }
 
+            // Exits walk mode outright rather than trying to coexist with the pause
+            // menu - see the class comment for why. DeactivateWalkMode() releases
+            // the cursor as part of shutting down, so the menu that's presumably
+            // about to open gets a normal, unlocked cursor with nothing fighting it.
+            if (_active && Input.GetKeyDown(KeyCode.Escape))
+            {
+                DeactivateWalkMode();
+                return;
+            }
+
             if (!_active)
             {
                 return;
@@ -167,10 +194,22 @@ namespace DesignerBackgroundTest
             // dragging the window doesn't unexpectedly spin/walk the camera either.
             bool editorOpen = StructureEditor != null && StructureEditor.IsOpen;
 
-            // Arrow keys are the only look control - see the class comment for why
-            // mouse-look was removed entirely.
+            // Cursor stays locked/hidden for the whole time walk mode is genuinely
+            // active - released the instant the structure editor panel needs normal
+            // mouse interaction, and (see the Escape handling above) never fights
+            // the pause menu since Escape exits walk mode before the menu opens.
+            Cursor.lockState = editorOpen ? CursorLockMode.None : CursorLockMode.Locked;
+            Cursor.visible = editorOpen;
+
             if (!editorOpen)
             {
+                ModApi.Input.IGameInputs inputs = Assets.Scripts.Game.Instance?.Inputs;
+                if (inputs != null)
+                {
+                    _yaw += inputs.CameraLookLeftRight.GetAxis() * MouseLookSensitivity;
+                    _pitch += inputs.CameraLookUpDown.GetAxis() * MouseLookSensitivity;
+                }
+
                 if (Input.GetKey(KeyCode.LeftArrow)) _yaw -= ArrowLookSpeed * Time.deltaTime;
                 if (Input.GetKey(KeyCode.RightArrow)) _yaw += ArrowLookSpeed * Time.deltaTime;
                 if (Input.GetKey(KeyCode.UpArrow)) _pitch += ArrowLookSpeed * Time.deltaTime;
@@ -268,12 +307,18 @@ namespace DesignerBackgroundTest
                 userInterface.RegisterDialog(this);
             }
 
-            Debug.Log("[DesignerBackgroundTest] Walk camera: ON (F1 to exit, WASD to move, arrow keys to look)");
+            Debug.Log("[DesignerBackgroundTest] Walk camera: ON (F1 or Escape to exit, WASD to move, mouse or arrow keys to look)");
         }
 
         private void DeactivateWalkMode()
         {
             _active = false;
+            // LateUpdate only touches Cursor state while _active - without this,
+            // whatever it was set to on the last active frame (locked/hidden) would
+            // stick around forever after walk mode ends instead of ever being
+            // released.
+            Cursor.lockState = CursorLockMode.None;
+            Cursor.visible = true;
             transform.position = _preWalkPosition;
             transform.rotation = _preWalkRotation;
             if (DesignerCameraScriptRef != null)

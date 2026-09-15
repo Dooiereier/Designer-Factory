@@ -20,30 +20,35 @@ MonoBehaviour:
     interior backdrop.
 
 
-    <color=red>Requires Juno Harmony'
+    Press F1 to walk around the premises!
+
+
+    <color=red>Requires
+    Juno Harmony'
   _loadPriority: 0
   _name: Designer Factory
   _otherAssets: []
   _prefabs:
-  - {fileID: 100100000, guid: 7fd2d3fc8293e423691e6c73d9bec60a, type: 3}
-  - {fileID: 100100000, guid: 13a158225c1b6428babe5872e4a55766, type: 3}
-  - {fileID: 100100000, guid: d4f0c45a3c2c347a5ad64d64e56beaea, type: 3}
-  - {fileID: 100100000, guid: 9dfffca90b87b4b04b18b27a9ddca9a9, type: 3}
-  - {fileID: 100100000, guid: e69525cf586fd47ffa1a3c38f4bbef32, type: 3}
-  - {fileID: 100100000, guid: 214dbdf8858c44761a685d0e2050e4b5, type: 3}
-  - {fileID: 100100000, guid: 62aa09608f8a445a8b55cc111a571ba6, type: 3}
-  - {fileID: 100100000, guid: a58ab0f8dedcf4539b000e10df2da590, type: 3}
-  - {fileID: 100100000, guid: cf60d3b876f094f21ae90071ba4e4695, type: 3}
-  - {fileID: 100100000, guid: 58292f370cf5c4823a26db9593d10a20, type: 3}
-  - {fileID: 100100000, guid: 0fe76b275f85d425db931bf0ad02a322, type: 3}
-  - {fileID: 100100000, guid: 82ca6de60342244b6bd1bf3126662ad2, type: 3}
-  - {fileID: 100100000, guid: 9416cf2337c6840d39086d515926e081, type: 3}
-  - {fileID: 100100000, guid: 0aaae9cce0a2f4681afcaa25fd860ed7, type: 3}
-  - {fileID: 100100000, guid: 0466c267fcf4c47b0925cfecefca1c94, type: 3}
-  - {fileID: 100100000, guid: 5275b6580a00649edb9d015c9144c7b9, type: 3}
-  - {fileID: 100100000, guid: 37061de02d387434faced0915d2ed6e6, type: 3}
-  - {fileID: 100100000, guid: ece1042a110c54d779ada7906e8b2bff, type: 3}
-  - {fileID: 100100000, guid: 8ceb9f322f7344a33bf108d1ce661add, type: 3}
+  - {fileID: 4120602261400063892, guid: 8ceb9f322f7344a33bf108d1ce661add, type: 3}
+  - {fileID: 2424558855081450326, guid: 0466c267fcf4c47b0925cfecefca1c94, type: 3}
+  - {fileID: 4580725066303455112, guid: 7fd2d3fc8293e423691e6c73d9bec60a, type: 3}
+  - {fileID: 1755569525135762455, guid: 5275b6580a00649edb9d015c9144c7b9, type: 3}
+  - {fileID: 2698046849891686396, guid: 58292f370cf5c4823a26db9593d10a20, type: 3}
+  - {fileID: 3547712210808485640, guid: 9dfffca90b87b4b04b18b27a9ddca9a9, type: 3}
+  - {fileID: 8634388404528815823, guid: d4f0c45a3c2c347a5ad64d64e56beaea, type: 3}
+  - {fileID: 8107225388687279351, guid: 0aaae9cce0a2f4681afcaa25fd860ed7, type: 3}
+  - {fileID: 7165843805011512080, guid: ece1042a110c54d779ada7906e8b2bff, type: 3}
+  - {fileID: 1412092256355108699, guid: 214dbdf8858c44761a685d0e2050e4b5, type: 3}
+  - {fileID: 2902334653582220932, guid: e69525cf586fd47ffa1a3c38f4bbef32, type: 3}
+  - {fileID: 4750090969617963048, guid: 37061de02d387434faced0915d2ed6e6, type: 3}
+  - {fileID: 3632602566616779480, guid: cf60d3b876f094f21ae90071ba4e4695, type: 3}
+  - {fileID: 435742736259019681, guid: 9416cf2337c6840d39086d515926e081, type: 3}
+  - {fileID: 9204363135791075447, guid: 32e2b1322dd37425986ce4122a3fc23b, type: 3}
+  - {fileID: 3211342809635338852, guid: 82ca6de60342244b6bd1bf3126662ad2, type: 3}
+  - {fileID: 5762625407364439452, guid: a58ab0f8dedcf4539b000e10df2da590, type: 3}
+  - {fileID: 4515170536615621691, guid: 62aa09608f8a445a8b55cc111a571ba6, type: 3}
+  - {fileID: 1208472845355450234, guid: 13a158225c1b6428babe5872e4a55766, type: 3}
+  - {fileID: 7046063120500385555, guid: 0fe76b275f85d425db931bf0ad02a322, type: 3}
   _steamDescription: 
   _steamLanguage: English
   _steamPreviewPath: 
@@ -51,7 +56,7 @@ MonoBehaviour:
   _steamTitle: 
   _steamVisibility: 0
   _versionMajor: 0
-  _versionMinor: 4
+  _versionMinor: 5
   _partCategories: []
   _parts: []
   _partStyleExtensions: []

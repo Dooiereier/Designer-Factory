@@ -489,6 +489,14 @@ namespace DesignerBackgroundTest
                 ZAxisAnchorSide = zAxisAnchorSide,
                 ZAxisAnchorInset = zAxisAnchorInset,
             });
+            // Without this, a footprint read that happens to land within
+            // FootprintCacheDuration of this add (e.g. BuildHangar's own
+            // rebuild-after-LoadConfig, which calls LoadConfig - itself many
+            // AddStructure calls - then immediately rebuilds trees/Droods off of
+            // GetPlacedFootprints/GetDroodAvoidedFootprints) would still see
+            // whatever the cache held BEFORE this structure existed, time-based
+            // expiry alone doesn't know _placed just changed.
+            _footprintCache = null;
             return instance;
         }
 
@@ -586,6 +594,7 @@ namespace DesignerBackgroundTest
                 UnityEngine.Object.Destroy(_placed[index].Instance);
             }
             _placed.RemoveAt(index);
+            _footprintCache = null;
             if (_selectedIndex == index)
             {
                 _selectedIndex = -1;

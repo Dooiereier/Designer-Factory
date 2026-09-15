@@ -25,6 +25,12 @@ namespace DesignerBackgroundTest
         private const int FirstCharacterPercent = 50;
         private const int SecondCharacterPercent = 30;
 
+        // No prefab (DroodPrefab*.prefab has no m_LocalScale override) or FBX import
+        // setting scales these down from the imported model's own real-world size -
+        // this is a uniform multiplier on top of that default (1,1,1) scale, not a
+        // correction to some other baseline.
+        private const float DroodScaleMultiplier = 1.07f;
+
         public static WanderingDrood Create(Transform parent, Vector3 groundPosition, float floorY, System.Random random, WalkCameraController playerCamera)
         {
             int roll = random.Next(100);
@@ -44,6 +50,7 @@ namespace DesignerBackgroundTest
             instance.name = "Drood";
             instance.transform.SetParent(parent, false);
             instance.transform.position = new Vector3(groundPosition.x, floorY, groundPosition.z);
+            instance.transform.localScale = Vector3.one * DroodScaleMultiplier;
             ReduceShininess(instance);
 
             Animator animator = instance.GetComponentInChildren<Animator>();

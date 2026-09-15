@@ -11,7 +11,7 @@ namespace DesignerBackgroundTest
         // structure editor (add/move/delete/save/load) becomes fully inaccessible to
         // players, while whatever's already saved in PlacedStructures.json still
         // gets loaded and shown (see StructureEditController.EditingEnabled).
-        private const bool EnableStructureEditor = false;
+        private const bool EnableStructureEditor = true;
 
         // Minimums - the hangar is sized around the actual loaded craft's bounds (see
         // BuildHangar), but never smaller than this, so a tiny craft still gets a
@@ -883,12 +883,22 @@ namespace DesignerBackgroundTest
                         }
                     }
 
+                    // Bottom end anchored to stairBaseZ - stepRun (where the first
+                    // real riser actually starts climbing, right at the back edge of
+                    // the enlarged landing tread) rather than stairBaseZ itself (the
+                    // landing's own reference point, one stepRun further out) - a
+                    // straight line from there to the top tread's exact back-edge
+                    // corner (stairTopZ/stairTopSurfaceY, already exact) now has
+                    // rise/run mathematically equal to stepRise/stepRun, the same
+                    // slope as the treads themselves, instead of running ~4.5%
+                    // shallower over its full length.
+                    float railBaseZ = stairBaseZ - stepRun;
                     CreateBoxBetween(hangarRoot.transform, $"Stair{stairSide}RailInner{levelSuffix}",
-                        new Vector3(stairWalkwayX - stairTreadWidth * 0.5f - 0.05f, levelFloorY + 0.9f, stairBaseZ),
+                        new Vector3(stairWalkwayX - stairTreadWidth * 0.5f - 0.05f, levelFloorY + 0.9f, railBaseZ),
                         new Vector3(stairWalkwayX - stairTreadWidth * 0.5f - 0.05f, stairTopSurfaceY + 0.9f, stairTopZ),
                         0.06f, trussColor);
                     CreateBoxBetween(hangarRoot.transform, $"Stair{stairSide}RailOuter{levelSuffix}",
-                        new Vector3(stairWalkwayX + stairTreadWidth * 0.5f + 0.05f, levelFloorY + 0.9f, stairBaseZ),
+                        new Vector3(stairWalkwayX + stairTreadWidth * 0.5f + 0.05f, levelFloorY + 0.9f, railBaseZ),
                         new Vector3(stairWalkwayX + stairTreadWidth * 0.5f + 0.05f, stairTopSurfaceY + 0.9f, stairTopZ),
                         0.06f, trussColor);
                 }
@@ -1394,16 +1404,23 @@ namespace DesignerBackgroundTest
                 if (carWaypoints.Count > 0)
                 {
                     // Fixed mix (was 2x M939Truck + 1x RangeRover; car 1 swapped to
-                    // CargoTruck) rather than a random roll.
+                    // CargoTruck, then RangeRover swapped for TuskTruck) rather than
+                    // a random roll.
                     CarFactory.VehicleKind[] carTypes =
                     {
                         CarFactory.VehicleKind.CargoTruck,
                         CarFactory.VehicleKind.M939Truck,
-                        CarFactory.VehicleKind.RangeRover,
+                        CarFactory.VehicleKind.TuskTruck,
                     };
                     for (int i = 0; i < carTypes.Length; i++)
                     {
-                        int startIndex = i % carWaypoints.Count;
+                        // Spread evenly across the WHOLE waypoint loop (a fraction of
+                        // carWaypoints.Count, not i % carWaypoints.Count) rather than
+                        // always starting at indices 0, 1, 2 - with more than
+                        // carTypes.Length waypoints placed, that previously clustered
+                        // every car into the first few waypoints instead of spacing
+                        // them around the full loop.
+                        int startIndex = (i * carWaypoints.Count) / carTypes.Length;
                         CarFactory.Create(hangarRoot.transform, carWaypoints[startIndex], FloorTopY, structureEditor, startIndex, carTypes[i]);
                     }
                 }
